@@ -907,7 +907,8 @@ async def test_scaling_says_why_it_started_nothing(orchestrator, caplog) -> None
     assert any("without instance information" in record.message for record in caplog.records)
 
 
-def test_local_credentials_warning_is_shown_and_can_be_declined(orchestrator, caplog) -> None:
+@pytest.mark.asyncio
+async def test_local_credentials_warning_is_shown_and_can_be_declined(orchestrator, caplog) -> None:
     """A credential that won't last the job is called out before any instance is started."""
     orchestrator._instance_manager.local_credential_warning = Mock(
         return_value="These credentials expire.\nUse a service account."
@@ -916,37 +917,40 @@ def test_local_credentials_warning_is_shown_and_can_be_declined(orchestrator, ca
     with patch("sys.stdin.isatty", return_value=True), patch("builtins.input", return_value="no"):
         with caplog.at_level(logging.WARNING, logger="cloud_tasks.instance_manager.orchestrator"):
             with pytest.raises(RuntimeError, match="will not last the job"):
-                orchestrator._check_local_credentials()
+                await orchestrator._check_local_credentials()
 
     logged = "\n".join(record.getMessage() for record in caplog.records)
     assert "These credentials expire." in logged
     assert "Use a service account." in logged
 
 
-def test_local_credentials_warning_can_be_accepted(orchestrator) -> None:
+@pytest.mark.asyncio
+async def test_local_credentials_warning_can_be_accepted(orchestrator) -> None:
     """Answering yes gets on with the job."""
     orchestrator._instance_manager.local_credential_warning = Mock(return_value="expiring")
 
     with patch("sys.stdin.isatty", return_value=True), patch("builtins.input", return_value="yes"):
-        orchestrator._check_local_credentials()
+        await orchestrator._check_local_credentials()
 
 
-def test_local_credentials_warning_does_not_block_a_non_interactive_run(orchestrator) -> None:
+@pytest.mark.asyncio
+async def test_local_credentials_warning_does_not_block_a_non_interactive_run(orchestrator) -> None:
     """Nothing is there to answer the question when the job is started by a script."""
     orchestrator._instance_manager.local_credential_warning = Mock(return_value="expiring")
 
     with patch("sys.stdin.isatty", return_value=False), patch("builtins.input") as mock_input:
-        orchestrator._check_local_credentials()
+        await orchestrator._check_local_credentials()
 
     mock_input.assert_not_called()
 
 
-def test_no_credentials_warning_asks_nothing(orchestrator) -> None:
+@pytest.mark.asyncio
+async def test_no_credentials_warning_asks_nothing(orchestrator) -> None:
     """Credentials that will last the job are not worth interrupting anyone about."""
     orchestrator._instance_manager.local_credential_warning = Mock(return_value=None)
 
     with patch("sys.stdin.isatty", return_value=True), patch("builtins.input") as mock_input:
-        orchestrator._check_local_credentials()
+        await orchestrator._check_local_credentials()
 
     mock_input.assert_not_called()
 
@@ -1005,6 +1009,9 @@ def _wire_sync_instance_manager_methods(orchestrator) -> None:
         side_effect=effective_cpus_per_task
     )
     orchestrator._instance_manager.tasks_per_instance = Mock(side_effect=tasks_per_instance)
+    # A property on the real interface, and provider-specific: these tests model GCP, where
+    # a reclaimed spot instance is left TERMINATED rather than deleted
+    orchestrator._instance_manager.restartable_states = ("stopped", "terminated")
 
 
 def test_instance_table_counts_the_tasks_the_instances_can_run(orchestrator) -> None:
@@ -1306,3 +1313,97 @@ async def test_terminate_all_instances_goes_at_every_instance_at_once(orchestrat
     await orchestrator.terminate_all_instances()
 
     assert most_at_once == count
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_instance_is_not_a_restart_candidate(orchestrator) -> None:
+    """An instance this job deleted is never coming back, however long it stays listed.
+
+    AWS keeps a deleted instance in its listing for about an hour. Trying to restart one
+    would fail, and a failed restart blocks new instances of that type in that zone, so the
+    pool could not refill for as long as the corpse lingered.
+    """
+    orchestrator._instance_manager.terminate_instance = AsyncMock()
+    await orchestrator._terminate_keepalive_instance(_make_instance("dead-1"))
+
+    orchestrator.list_job_instances = AsyncMock(
+        return_value=[_make_instance("dead-1", state="terminated")]
+    )
+    orchestrator._instance_manager.restart_instance = AsyncMock()
+    orchestrator._instance_manager.start_instance = AsyncMock(
+        return_value=("new-1", "us-central1-a")
+    )
+    orchestrator._generate_worker_startup_script = MagicMock(return_value="#!/bin/bash\n")
+
+    instance_ids = await orchestrator._provision_instances(1)
+
+    orchestrator._instance_manager.restart_instance.assert_not_awaited()
+    assert instance_ids == ["new-1"]
+    # ... and its zone is not held against the replacement either
+    assert orchestrator._instance_manager.start_instance.await_args[1]["exclude_zones"] == set()
+
+
+@pytest.mark.asyncio
+async def test_only_the_states_the_provider_calls_restartable_are_restarted(orchestrator) -> None:
+    """ "terminated" is a stopped VM on GCP and a deleted one on AWS, so the provider decides."""
+    orchestrator._instance_manager.restartable_states = ("stopped",)
+    orchestrator.list_job_instances = AsyncMock(
+        return_value=[
+            _make_instance("stopped-1", state="stopped"),
+            _make_instance("gone-1", state="terminated"),
+        ]
+    )
+    orchestrator._instance_manager.restart_instance = AsyncMock()
+    orchestrator._instance_manager.start_instance = AsyncMock(
+        return_value=("new-1", "us-central1-a")
+    )
+    orchestrator._generate_worker_startup_script = MagicMock(return_value="#!/bin/bash\n")
+
+    await orchestrator._provision_instances(2)
+
+    restarted = [
+        call.args[0] for call in orchestrator._instance_manager.restart_instance.await_args_list
+    ]
+    assert restarted == ["stopped-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_termination_that_fails_is_retried_and_then_reported(
+    orchestrator, caplog: pytest.LogCaptureFixture
+) -> None:
+    """An instance that would not go is still running and still being billed for."""
+    orchestrator._TERMINATION_RETRY_DELAY = 0.0
+    orchestrator.list_job_instances = AsyncMock(
+        return_value=[_make_instance("stubborn"), _make_instance("fine")]
+    )
+
+    attempts = 0
+
+    async def terminate(instance_id, zone=None):
+        nonlocal attempts
+        if instance_id == "stubborn":
+            attempts += 1
+            raise RuntimeError("RateLimitExceeded")
+
+    orchestrator._instance_manager.terminate_instance = AsyncMock(side_effect=terminate)
+
+    with caplog.at_level(logging.ERROR):
+        await orchestrator.terminate_all_instances()
+
+    assert attempts == 1 + orchestrator._TERMINATION_RETRIES
+    logged = "\n".join(record.getMessage() for record in caplog.records)
+    assert "stubborn" in logged
+    assert "still" in logged
+
+
+@pytest.mark.asyncio
+async def test_an_instance_without_a_zone_still_terminates(orchestrator) -> None:
+    """Not every provider reports a zone, and a missing one must not abort the deletion."""
+    instance = _make_instance("no-zone")
+    del instance["zone"]
+    orchestrator.list_job_instances = AsyncMock(return_value=[instance])
+    orchestrator._instance_manager.terminate_instance = AsyncMock()
+
+    await orchestrator.terminate_all_instances()
+
+    orchestrator._instance_manager.terminate_instance.assert_awaited_once_with("no-zone", None)

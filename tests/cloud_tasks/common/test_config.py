@@ -1124,3 +1124,18 @@ def test_load_config_zone_absent_stays_none(tmp_path):
         yaml.safe_dump(config_dict, f)
     cfg = load_config(str(file_path))
     assert cfg.gcp.zone is None
+
+
+def test_empty_zone_list_is_rejected(tmp_path: Any) -> None:
+    """An empty list says nothing; None already means "anywhere in the region".
+
+    Parameters:
+        tmp_path: Directory to write the configuration file into.
+    """
+    config_dict = {"provider": "gcp", "gcp": {"zone": []}, "run": {}}
+    file_path = tmp_path / "config.yaml"
+    with open(file_path, "w") as f:
+        yaml.safe_dump(config_dict, f)
+
+    with pytest.raises(pydantic.ValidationError):
+        load_config(str(file_path))

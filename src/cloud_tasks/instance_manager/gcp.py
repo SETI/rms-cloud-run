@@ -67,6 +67,10 @@ class GCPComputeInstanceManager(InstanceManager):
         "TERMINATED": "terminated",
     }
 
+    #: What the family table says for a machine family whose processor GCP doesn't publish.
+    #: It ranks 0 on purpose rather than by omission.
+    _UNKNOWN_PROCESSOR = "Unknown"
+
     _MACHINE_TYPE_FAMILY_TO_PROCESSOR_TYPE = {
         # General purpose
         "c4": "Intel Emerald Rapids",
@@ -278,6 +282,17 @@ class GCPComputeInstanceManager(InstanceManager):
             f"Initialized GCP Compute Engine: project '{self._project_id}', "
             f"region '{self._region}', zone(s) '{', '.join(self._zones) or None}'"
         )
+
+    @property
+    def restartable_states(self) -> tuple[str, ...]:
+        """The states a Compute Engine instance can be started again from.
+
+        Returns:
+            tuple[str, ...]: "stopped" and "terminated". Compute Engine's TERMINATED is a
+            stopped VM that still exists, which is what a reclaimed spot instance becomes,
+            not a deleted one.
+        """
+        return ("stopped", "terminated")
 
     def _get_compute_client(self):
         """Get or create a thread-local compute client."""
@@ -532,7 +547,10 @@ class GCPComputeInstanceManager(InstanceManager):
                     performance_rank = self._PROCESSOR_FAMILY_TO_PERFORMANCE_RANKING[
                         processor_family
                     ]
-                else:
+                elif processor_family != self._UNKNOWN_PROCESSOR:
+                    # "Unknown" is what the table deliberately says for a family whose
+                    # processor isn't published, such as the TPU hosts; rank 0 is the
+                    # intended answer, so reporting it as a gap in the tables is noise
                     unranked_processors.add(processor_family)
             else:
                 families_without_processor[machine_type_family] = (

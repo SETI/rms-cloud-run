@@ -168,6 +168,22 @@ class InstanceManager(ABC):
         """
         self._failed_zones.discard(zone)
 
+    @property
+    def restartable_states(self) -> tuple[str, ...]:
+        """The states an instance can be started again from, rather than replaced.
+
+        Providers disagree about what their state names mean, and one of them is a trap:
+        GCP leaves a reclaimed spot instance TERMINATED, which is a stopped VM with its disk
+        intact, while on AWS "terminated" means the instance has been deleted and is never
+        coming back. Treating the two alike would have a job try to restart instances that no
+        longer exist, so each provider says for itself.
+
+        Returns:
+            tuple[str, ...]: The standardized state names that can be restarted. The base
+            implementation names only "stopped", which means the same thing everywhere.
+        """
+        return ("stopped",)
+
     def local_credential_warning(self) -> str | None:
         """Describe a problem with the credentials this process is running on, or None.
 

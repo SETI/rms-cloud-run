@@ -316,9 +316,11 @@ class ProviderConfig(RunConfig, validate_assignment=True):
     # One zone, or the zones an instance may be created in. Instance creation walks the
     # list when a zone turns out to have no capacity, so giving more than one is the
     # difference between a job that stalls and one that moves to where the capacity is.
-    zone: list[Annotated[str, Field(min_length=1)]] | Annotated[str, Field(min_length=1)] | None = (
-        None
-    )
+    zone: (
+        Annotated[list[Annotated[str, Field(min_length=1)]], Field(min_length=1)]
+        | Annotated[str, Field(min_length=1)]
+        | None
+    ) = None
     exactly_once_queue: bool | None = None
 
 

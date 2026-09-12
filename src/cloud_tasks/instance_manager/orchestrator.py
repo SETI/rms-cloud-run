@@ -63,16 +63,17 @@ class InstanceOrchestrator:
     # instances, so this is kept coarse (the timeouts are minutes) to limit the extra
     # provider API load on top of the scaling loop's own instance listing
     _KEEPALIVE_CHECK_INTERVAL = 60.0
+    # How many further attempts a termination that failed is given, and the base delay
+    # between them (multiplied by the attempt number, so it backs off). The usual cause is
+    # the provider throttling a large pool's worth of requests, which passes on its own.
+    _TERMINATION_RETRIES = 3
+    _TERMINATION_RETRY_DELAY = 5.0
     # The order instances are listed in, from the ones doing the work to the ones that have
     # stopped doing it. A table read while a job is running is nearly always being read to
     # find out what is working now, so that goes at the top; anything on its way out is
     # context for why the pool is the size it is. States a provider reports that aren't
     # listed here sort last, in name order.
     _INSTANCE_STATE_ORDER = ("running", "starting", "stopping", "stopped", "terminated")
-    # States in which an instance still exists and can be started again rather than
-    # replaced. GCP leaves a reclaimed spot instance TERMINATED, which is a stopped VM and
-    # not a deleted one.
-    _RESTARTABLE_STATES = ("stopped", "terminated")
 
     def __init__(
         self,
@@ -173,6 +174,12 @@ class InstanceOrchestrator:
         # health monitor's books and, worse, make _keepalive_ever_heard true on the
         # strength of an instance that no longer exists.
         self._terminated_instances: set[str] = set()
+        # Instances this orchestrator actually asked the provider to delete. A subset of the
+        # set above, which also holds instances that are merely on their way out: a spot
+        # instance being reclaimed stops sending useful keep-alives but is exactly the kind
+        # of instance worth restarting, whereas one we deleted is never coming back and must
+        # not be treated as a restart candidate while the provider still lists it.
+        self._deleted_instances: set[str] = set()
         # Instances currently known to have been reclaimed by the provider as spot
         # capacity. The scaling loop replaces them like any other missing instance; an
         # instance leaves this set if it is later restarted, so that a second reclamation of
@@ -497,7 +504,7 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
 
         await self.initialize()
 
-        self._check_local_credentials()
+        await self._check_local_credentials()
 
         if self._run_config.startup_script is None:
             raise RuntimeError("startup_script is required")
@@ -652,7 +659,7 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
             self._optimal_instance_info, vars(self._run_config)
         )
 
-    def _check_local_credentials(self) -> None:
+    async def _check_local_credentials(self) -> None:
         """Warn, and ask whether to go on, if the local credentials will not last the job.
 
         Raises:
@@ -682,7 +689,11 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
             # scheduler must not block on it
             self._logger.warning("Not running interactively, so continuing with these credentials")
             return
-        answer = input("Continue with these credentials? Type 'yes' to continue: ")
+        # In a thread: start() is gathered with the event monitor, so a bare input() would
+        # hold the loop and stop the job's other work while the question sits unanswered
+        answer = await asyncio.to_thread(
+            input, "Continue with these credentials? Type 'yes' to continue: "
+        )
         if answer.strip().lower() not in ("y", "yes"):
             raise RuntimeError("Aborted because the local credentials will not last the job")
 
@@ -840,6 +851,7 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
             )
             return
         self._terminated_instances.add(instance_id)
+        self._deleted_instances.add(instance_id)
         self._keepalive_first_seen.pop(instance_id, None)
         self._keepalive_last_heard.pop(instance_id, None)
 
@@ -941,7 +953,10 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
         """
         if not self._pricing_info:
             return None
-        zone = instance["zone"]
+        zone = instance.get("zone") or instance.get("location")
+        if not zone:
+            # Azure instances report neither, and there is no per-zone price to look up
+            return None
         for zone_key in (zone, f"{zone[:-1]}*"):
             # Pricing is per region, so it may be recorded against a wildcard zone
             try:
@@ -1535,8 +1550,16 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
             )
             return [], set()
 
+        # What counts as restartable is the provider's call: "terminated" is a stopped VM on
+        # GCP and a deleted one on AWS. Instances this orchestrator terminated itself are
+        # never candidates, however the provider still reports them - AWS keeps a deleted
+        # instance in its listing for about an hour, and trying to restart one would fail and
+        # then, by the rule below, block new instances in that zone for as long as it lingers.
+        restartable = self._instance_manager.restartable_states
         stopped = [
-            instance for instance in instances if instance["state"] in self._RESTARTABLE_STATES
+            instance
+            for instance in instances
+            if instance["state"] in restartable and instance["id"] not in self._deleted_instances
         ]
         if not stopped:
             return [], set()
@@ -1563,6 +1586,7 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
                 # startup clock starts from scratch
                 self._terminated_instances.discard(instance_id)
                 self._spot_terminated_instances.discard(instance_id)
+                self._deleted_instances.discard(instance_id)
                 self._keepalive_first_seen.pop(instance_id, None)
                 self._keepalive_last_heard.pop(instance_id, None)
                 return instance_id
@@ -1691,9 +1715,10 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
                 """
                 try:
                     self._logger.info(f"Terminating instance: {instance['id']}")
-                    await instance_manager.terminate_instance(instance["id"], instance["zone"])
+                    await instance_manager.terminate_instance(instance["id"], instance.get("zone"))
                     self._logger.info(f"Terminated instance: {instance['id']}")
                     self._terminated_instances.add(instance["id"])
+                    self._deleted_instances.add(instance["id"])
                     return True
                 except Exception as e:
                     self._logger.error(
@@ -1705,7 +1730,11 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
             # Stopped instances cost money for as long as they exist, and an instance that
             # is on its way down has not gone yet.
             current_instances = await self.list_job_instances()
-            stopped = [i for i in current_instances if i["state"] in self._RESTARTABLE_STATES]
+            stopped = [
+                i
+                for i in current_instances
+                if i["state"] in ("stopped", *instance_manager.restartable_states)
+            ]
             if stopped:
                 self._logger.info(
                     f"{len(stopped)} of the {len(current_instances)} instance(s) are stopped "
@@ -1718,6 +1747,40 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
             # Wait for all tasks to complete
             results = await asyncio.gather(*tasks)
 
-            # Count successful terminations
-            terminate_count = sum(1 for result in results if result)
-            self._logger.info(f"Successfully terminated {terminate_count} instances")
+            # An instance that would not terminate is still running and still being billed
+            # for, so it is named and tried again rather than lost in a count of the
+            # successes. Throttling is the usual reason a large pool sees failures, and it
+            # clears by itself, so a short wait between attempts is most of the fix.
+            remaining = [
+                instance
+                for instance, terminated in zip(current_instances, results)
+                if not terminated
+            ]
+            for attempt in range(self._TERMINATION_RETRIES):
+                if not remaining:
+                    break
+                self._logger.warning(
+                    f"{len(remaining)} instance(s) did not terminate: "
+                    f"{', '.join(str(i['id']) for i in remaining)}; retrying in "
+                    f"{self._TERMINATION_RETRY_DELAY * (attempt + 1):.0f}s"
+                )
+                await asyncio.sleep(self._TERMINATION_RETRY_DELAY * (attempt + 1))
+                retry_results = await asyncio.gather(
+                    *[terminate_single_instance(instance) for instance in remaining]
+                )
+                remaining = [
+                    instance
+                    for instance, terminated in zip(remaining, retry_results)
+                    if not terminated
+                ]
+
+            terminate_count = len(current_instances) - len(remaining)
+            self._logger.info(
+                f"Successfully terminated {terminate_count} of {len(current_instances)} instances"
+            )
+            if remaining:
+                self._logger.error(
+                    f"{len(remaining)} instance(s) could not be terminated and are still "
+                    f"running: {', '.join(str(i['id']) for i in remaining)}. They must be "
+                    "terminated by hand or they will go on costing money."
+                )

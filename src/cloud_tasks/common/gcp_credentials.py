@@ -18,6 +18,10 @@ LOGGER = logging.getLogger(__name__)
 #: covered by this one scope, and an impersonated token has to be asked for by scope.
 CLOUD_PLATFORM_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
 
+#: How far to follow impersonation back towards the credentials underneath it. Real chains
+#: are one deep; the bound is what stops a malformed or self-referential one from spinning.
+_MAX_CREDENTIAL_CHAIN_DEPTH = 8
+
 
 class RunnerCredentials(NamedTuple):
     """The credentials the runner makes its own API calls with.
@@ -34,6 +38,30 @@ class RunnerCredentials(NamedTuple):
     project_id: str | None
     source_is_personal: bool
     impersonated_service_account: str | None
+
+
+def _is_personal(credentials: Any) -> bool:
+    """Whether these credentials ultimately belong to a person rather than to a service.
+
+    "gcloud auth application-default login --impersonate-service-account" produces
+    impersonated credentials whose source is the person who ran it, so the impersonation has
+    to be looked through: what decides whether the credentials expire partway through a long
+    job is whatever is underneath, not the account being impersonated.
+
+    Parameters:
+        credentials: The credentials to classify.
+
+    Returns:
+        bool: True if a personal login is somewhere in the chain.
+    """
+    for _ in range(_MAX_CREDENTIAL_CHAIN_DEPTH):
+        if isinstance(credentials, oauth2_credentials.Credentials):
+            return True
+        source = getattr(credentials, "_source_credentials", None)
+        if source is None or source is credentials:
+            return False
+        credentials = source
+    return False
 
 
 def load_runner_credentials(gcp_config: GCPConfig) -> RunnerCredentials:
@@ -86,7 +114,7 @@ def load_runner_credentials(gcp_config: GCPConfig) -> RunnerCredentials:
         # "gcloud auth application-default login"; every other kind (a service account key,
         # the metadata server on a GCE instance, workload identity federation) belongs to a
         # service and keeps working unattended.
-        source_is_personal = isinstance(credentials, oauth2_credentials.Credentials)
+        source_is_personal = _is_personal(credentials)
 
     runner_service_account = gcp_config.runner_service_account
     if runner_service_account:

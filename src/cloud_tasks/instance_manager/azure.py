@@ -709,7 +709,13 @@ class AzureVMInstanceManager(InstanceManager):
             zone: Availability zone the VM is in; not used for Azure, which finds the VM by
                 name within the resource group
         """
-        self.compute_client.virtual_machines.begin_start(self.resource_group, instance_id).wait()
+        # In a thread: wait() blocks until Azure has started the VM, which is tens of
+        # seconds, and restarts are awaited concurrently from the orchestrator
+        await asyncio.to_thread(
+            lambda: self.compute_client.virtual_machines.begin_start(
+                self.resource_group, instance_id
+            ).wait()
+        )
 
     async def terminate_instance(self, instance_id: str) -> None:
         """
