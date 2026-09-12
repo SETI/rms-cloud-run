@@ -88,8 +88,6 @@ GCP
 --runner-service-account SERVICE_ACCOUNT  The service account this command runs as; the local
                                        credentials impersonate it, which requires the role
                                        ``roles/iam.serviceAccountTokenCreator`` on it
-                                       on cloud-based instances to have access to system resources [Required when creating
-                                       instances]
 
 
 .. _cli_instance_type_selection_options:
@@ -149,7 +147,7 @@ Number of Instances Options
 These options are used to constrain the number of instances. They override any constraints
 in the configuration file (see :ref:`config_number_of_instances_options`).
 
---min-instances N             The minimum number of instances to use (defaults to 1)
+--min-instances N             The minimum number of instances to use (defaults to 0)
 --max-instances N             The maximum number of instances to use (defaults to 10)
 --min-total-cpus N            The minimum total number of vCPUs to use
 --max-total-cpus N            The maximum total number of vCPUs to use

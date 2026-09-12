@@ -247,9 +247,15 @@ yourself.
       worker_service_account: cloud-tasks-worker@<PROJECT_ID>.iam.gserviceaccount.com
 
 That file *is* the credential: anyone who has it is that service account until the key is
-deleted. Keep it outside your repository, readable only by you, and never commit it. This
-is the only option that keeps working when the person who started the job is not logged in
-any more, so it is the one to use for a long unattended run.
+deleted. Keep it outside your repository, readable only by you, and never commit it.
+
+A long unattended run needs credentials that do not belong to a person, and there are two
+ways to have them. This is one: a key file keeps working wherever the job runs, including
+from a laptop or a build agent. The other is to run ``cloud_tasks`` itself on a Compute
+Engine instance with a service account attached, where the metadata server supplies
+credentials for that account and no key file and no personal login are involved at all.
+What does *not* survive is a personal ``gcloud auth application-default login``, which is
+what the run warns about before it starts.
 
 Many organizations forbid service account keys through the
 ``iam.disableServiceAccountKeyCreation`` policy, in which case ``keys create`` fails and

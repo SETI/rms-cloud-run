@@ -1,9 +1,14 @@
 """Tests for cloud_tasks.instance_manager: InstanceManager and provider factory."""
 
+from typing import Any
+
 import pytest
 
 from cloud_tasks.common.config import ProviderConfig
-from cloud_tasks.instance_manager.instance_manager import InstanceManager
+from cloud_tasks.instance_manager.instance_manager import (
+    InstanceManager,
+    InstancePricingResult,
+)
 
 
 def _concrete_instance_manager(**kwargs) -> InstanceManager:
@@ -18,38 +23,66 @@ def _concrete_instance_manager(**kwargs) -> InstanceManager:
     """
 
     class ConcreteInstanceManager(InstanceManager):
-        async def get_available_instance_types(self, constraints=None):
-            pass
+        """An InstanceManager whose provider calls do nothing.
 
-        async def get_instance_pricing(self, instance_types, use_spot=False):
-            pass
+        The signatures match InstanceManager so that static checking notices if the
+        interface moves out from under the constraint logic these tests exercise.
+        """
 
-        async def get_optimal_instance_type(self, constraints=None):
-            pass
+        async def get_available_instance_types(
+            self, constraints: dict[str, Any] | None = None
+        ) -> dict[str, dict[str, Any]]:
+            """Never called; these tests don't ask the provider for instance types."""
+            raise NotImplementedError
 
-        async def start_instance(self, **kwargs):
-            pass
+        async def get_instance_pricing(
+            self,
+            instance_types: dict[str, dict[str, Any]],
+            use_spot: bool = False,
+            boot_disk_constraints: dict[str, Any] | None = None,
+        ) -> InstancePricingResult:
+            """Never called; these tests don't ask the provider for prices."""
+            raise NotImplementedError
 
-        async def restart_instance(self, instance_id, zone=None):
-            pass
+        async def get_optimal_instance_type(
+            self, constraints: dict[str, Any] | None = None
+        ) -> dict[str, float | str | None]:
+            """Never called; these tests don't ask the provider to choose a type."""
+            raise NotImplementedError
 
-        async def terminate_instance(self, instance_id, zone=None):
-            pass
+        async def start_instance(self, **kwargs: Any) -> tuple[str, str]:
+            """Never called; these tests don't create instances."""
+            raise NotImplementedError
 
-        async def list_running_instances(self, job_id=None, include_non_job=False):
-            pass
+        async def restart_instance(self, instance_id: str, zone: str | None = None) -> None:
+            """Never called; these tests don't restart instances."""
+            raise NotImplementedError
 
-        async def get_image_from_family(self, family_name):
-            pass
+        async def terminate_instance(self, instance_id: str, zone: str | None = None) -> None:
+            """Never called; these tests don't terminate instances."""
+            raise NotImplementedError
 
-        async def get_default_image(self):
-            pass
+        async def list_running_instances(
+            self, job_id: str | None = None, include_non_job: bool = False
+        ) -> list[dict[str, Any]]:
+            """Never called; these tests don't list instances."""
+            raise NotImplementedError
 
-        async def list_available_images(self):
-            pass
+        async def get_image_from_family(self, family_name: str) -> str | None:
+            """Never called; these tests don't look up images."""
+            raise NotImplementedError
 
-        async def get_available_regions(self):
-            pass
+        async def get_default_image(self) -> str | None:
+            """Never called; these tests don't look up images."""
+            raise NotImplementedError
+
+        async def list_available_images(self) -> list[dict[str, Any]]:
+            """Never called; these tests don't list images."""
+            raise NotImplementedError
+
+        async def get_available_regions(self, prefix: str | None = None) -> dict[str, Any]:
+            """Never called; these tests don't list regions."""
+            raise NotImplementedError
 
     return ConcreteInstanceManager(ProviderConfig(**kwargs))
 
@@ -816,7 +849,9 @@ class TestPricePerTask:
     def test_price_divided_by_the_tasks_that_fit(self, instance_manager):
         """The whole instance price, including memory and disk, spread over its tasks."""
         price_info = {"vcpu": 32, "mem_gb": 128, "total_price": 0.64}
-        assert instance_manager.price_per_task(price_info, {"cpus_per_task": 4}) == 0.08
+        assert instance_manager.price_per_task(price_info, {"cpus_per_task": 4}) == pytest.approx(
+            0.08
+        )
 
     def test_a_type_that_cannot_run_a_task_sorts_last(self, instance_manager):
         """Infinity rather than a division error, so it goes behind everything usable."""

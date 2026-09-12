@@ -4,6 +4,7 @@ import asyncio
 import copy
 import time
 import uuid as _uuid
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1027,7 +1028,7 @@ async def test_wait_for_operation_cancellation(
     )
 
 
-def _start_instance_kwargs(**overrides):
+def _start_instance_kwargs(**overrides: Any) -> dict[str, Any]:
     """Build the keyword arguments a plain instance creation needs.
 
     Parameters:
@@ -1049,7 +1050,9 @@ def _start_instance_kwargs(**overrides):
     return kwargs
 
 
-def _mock_compute_client(manager, insert_side_effect=None):
+def _mock_compute_client(
+    manager: GCPComputeInstanceManager, insert_side_effect: Any = None
+) -> MagicMock:
     """Point the manager at a compute client whose insert can be made to fail.
 
     Parameters:
@@ -1209,7 +1212,7 @@ async def test_start_instance_prefers_the_requested_zone_then_the_rest_of_the_re
         patch.object(manager, "_wait_for_operation", new=AsyncMock()),
     ):
         mock_list_region_zones.return_value = ["us-central1-a", "us-central1-b", "us-central1-c"]
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError, match="ZONE_RESOURCE_POOL_EXHAUSTED"):
             await manager.start_instance(**_start_instance_kwargs(zone="us-central1-c"))
 
     tried = [call[1]["zone"] for call in compute_client.insert.call_args_list]

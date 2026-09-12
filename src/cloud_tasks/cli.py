@@ -917,6 +917,12 @@ async def load_queue_common(
 
     Returns:
         (task_db, task_queue, events_queue, num_tasks)
+
+    Raises:
+        SystemExit: With code 0 if an existing database or a queue with messages would be
+            deleted and the user declines the confirmation, and with code 1 if there is
+            something to delete but stdin is not a terminal, so nobody can be asked. Pass
+            force=True to delete without confirmation in either case.
     """
     provider = config.provider
     provider_config = config.get_provider_config(provider)
@@ -2479,6 +2485,13 @@ def add_instance_pool_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Give each task more vCPUs than --cpus-per-task, leaving the surplus idle, "
         "when that is the only way to satisfy --min-memory-per-task",
+    )
+    parser.add_argument(
+        "--no-allow-cpu-wasting",
+        action="store_false",
+        dest="allow_cpu_wasting",
+        help="If specified, an instance type is rejected when it can't give each task the "
+        "memory it needs at the configured number of vCPUs per task",
     )
     parser.add_argument(
         "--min-tasks-per-instance", type=int, help="Minimum number of tasks per instance"

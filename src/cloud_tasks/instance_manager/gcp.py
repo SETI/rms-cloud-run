@@ -639,7 +639,14 @@ class GCPComputeInstanceManager(InstanceManager):
         """
 
         def describe(families: dict[str, int]) -> str:
-            """Render the families and their instance type counts for a log line."""
+            """Render the families and their instance type counts for a log line.
+
+            Parameters:
+                families: Machine family to the number of instance types it accounted for.
+
+            Returns:
+                str: The families in name order as "family (count)", comma-separated.
+            """
             return ", ".join(f"{family} ({count})" for family, count in sorted(families.items()))
 
         if families_without_processor:
@@ -1772,7 +1779,7 @@ class GCPComputeInstanceManager(InstanceManager):
         A spot instance that GCP reclaims is left in the TERMINATED state rather than
         deleted, so it can be started again with its disk and its name intact.
 
-        Args:
+        Parameters:
             instance_id: Instance name
             zone: The zone the instance is in; if not specified use the default zone
 
@@ -2359,7 +2366,7 @@ class GCPComputeInstanceManager(InstanceManager):
         """
         List every zone in a region.
 
-        Args:
+        Parameters:
             region: Region to list the zones of; if not specified use the default region
 
         Returns:
@@ -2392,7 +2399,7 @@ class GCPComputeInstanceManager(InstanceManager):
         """
         Get the default zone for the region.
 
-        Args:
+        Parameters:
             region: Region to get the default zone for; if not specified use the default region
 
         Returns:
@@ -2412,7 +2419,7 @@ class GCPComputeInstanceManager(InstanceManager):
         """
         Get a random zone for the region.
 
-        Args:
+        Parameters:
             region: Region to get a random zone for; if not specified use the default region
 
         Returns:
@@ -2432,7 +2439,7 @@ class GCPComputeInstanceManager(InstanceManager):
     ) -> list[str]:
         """Work out which zones to try creating an instance in, most preferred first.
 
-        Args:
+        Parameters:
             zone: The caller's preferred zone. A wildcard like ``us-central1-*`` means the
                 pricing data is per-region and any zone of that region will do.
             exclude_zones: Zones the caller has ruled out
@@ -2458,10 +2465,8 @@ class GCPComputeInstanceManager(InstanceManager):
             permitted = await self._list_region_zones(region)
             random.shuffle(permitted)
         if zone is not None:
-            if not self._zones:
-                # Prefer the requested zone, but fall back to the rest of the region
-                permitted = [zone] + [z for z in permitted if z != zone]
-            elif zone in permitted:
+            if not self._zones or zone in permitted:
+                # Prefer the requested zone, but fall back to whatever else is permitted
                 permitted = [zone] + [z for z in permitted if z != zone]
             else:
                 self._logger.warning(

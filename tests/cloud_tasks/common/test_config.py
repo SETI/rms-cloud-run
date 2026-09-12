@@ -3,6 +3,7 @@
 # Manually verified 5/7/2025
 
 import logging
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -419,13 +420,9 @@ def test_announced_default_silent_when_the_command_line_sets_it(
     assert attr_name not in _warned_attrs(caplog)
 
 
-def test_defaults_that_are_not_constraints_are_silent(caplog: pytest.LogCaptureFixture) -> None:
-    """A default that is the absence of a constraint, or a cadence, is applied without a word."""
-    c = _fresh_config()
-    with caplog.at_level(logging.WARNING, logger="cloud_tasks.common.config"):
-        c.update_run_config_from_provider_config()
-    messages = " ".join(r.message for r in caplog.records)
-    for attr_name in (
+@pytest.mark.parametrize(
+    "attr_name",
+    [
         "min_instances",
         "cpus_per_task",
         "allow_cpu_wasting",
@@ -433,8 +430,22 @@ def test_defaults_that_are_not_constraints_are_silent(caplog: pytest.LogCaptureF
         "instance_termination_delay",
         "local_ssd_base_size",
         "boot_disk_base_size",
-    ):
-        assert attr_name not in messages
+    ],
+)
+def test_defaults_that_are_not_constraints_are_silent(
+    attr_name: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A default that is the absence of a constraint, or a cadence, is applied without a word.
+
+    Parameters:
+        attr_name: The run option whose default should be applied silently.
+        caplog: Captures the warnings the defaults would otherwise announce.
+    """
+    c = _fresh_config()
+    with caplog.at_level(logging.WARNING, logger="cloud_tasks.common.config"):
+        c.update_run_config_from_provider_config()
+    messages = " ".join(r.message for r in caplog.records)
+    assert attr_name not in messages
 
 
 def test_announced_defaults_are_still_applied(caplog: pytest.LogCaptureFixture) -> None:
@@ -715,7 +726,7 @@ def test_config_get_provider_config_queue_name(config_obj, provider):
 
 
 # --- load_config ---
-def test_load_config_file_gcp(tmp_path):
+def test_load_config_file_gcp(tmp_path: Path) -> None:
     config_dict = {
         "provider": "gcp",
         "gcp": {"project_id": "pid", "credentials_file": "cf", "worker_service_account": "sa"},
@@ -729,10 +740,13 @@ def test_load_config_file_gcp(tmp_path):
     with patch.object(config_mod, "FCPath", lambda *a, **kw: file_path):
         cfg = load_config(str(file_path))
         assert cfg.gcp.project_id == "pid"
+        # The renamed field has to survive the load; a regression that drops or misroutes it
+        # would otherwise pass here
+        assert cfg.gcp.worker_service_account == "sa"
         assert cfg.run.architecture == "x86_64"
 
 
-def test_load_config_file_aws(tmp_path):
+def test_load_config_file_aws(tmp_path: Path) -> None:
     config_dict = {
         "provider": "aws",
         "aws": {"access_key": "ak", "secret_key": "sk"},
@@ -749,7 +763,7 @@ def test_load_config_file_aws(tmp_path):
         assert cfg.run.architecture == "x86_64"
 
 
-def test_load_config_file_azure(tmp_path):
+def test_load_config_file_azure(tmp_path: Path) -> None:
     config_dict = {
         "provider": "azure",
         "azure": {
@@ -776,7 +790,7 @@ def test_load_config_file_not_found():
         load_config("/nonexistent/file.yaml")
 
 
-def test_load_config_file_invalid_yaml(tmp_path):
+def test_load_config_file_invalid_yaml(tmp_path: Path) -> None:
     file_path = tmp_path / "bad.yaml"
     with open(file_path, "w") as f:
         f.write("- just\n- a\n- list\n")
@@ -835,7 +849,7 @@ def test_load_config_relative_paths(tmp_path, provider):
     assert cfg.azure.startup_script_file == str(tmp_path / "script-AZURE.sh")
 
 
-def test_load_config_instance_types_str_to_list(tmp_path):
+def test_load_config_instance_types_str_to_list(tmp_path: Path) -> None:
     config_dict = {
         "provider": "gcp",
         "gcp": {"instance_types": "n1-standard-1"},
@@ -852,7 +866,7 @@ def test_load_config_instance_types_str_to_list(tmp_path):
     assert cfg.azure.instance_types == ["Standard_B1s"]
 
 
-def test_load_config_instance_types_str_to_list_edge_cases(tmp_path):
+def test_load_config_instance_types_str_to_list_edge_cases(tmp_path: Path) -> None:
     # Just a string
     config_dict = {
         "provider": "gcp",
@@ -900,7 +914,7 @@ def test_load_config_instance_types_str_to_list_edge_cases(tmp_path):
     assert cfg.azure.instance_types is None
 
 
-def test_load_config_boot_disk_types_str_to_list_edge_cases(tmp_path):
+def test_load_config_boot_disk_types_str_to_list_edge_cases(tmp_path: Path) -> None:
     # Just a string
     config_dict = {
         "provider": "gcp",
@@ -1084,7 +1098,7 @@ def test_runconfig_max_memory_allowed_per_task() -> None:
         RunConfig(max_memory_allowed_per_task=-1)
 
 
-def test_load_config_zone_str_to_list(tmp_path):
+def test_load_config_zone_str_to_list(tmp_path: Path) -> None:
     """One zone is as valid as several, and both arrive as a list."""
     config_dict = {
         "provider": "gcp",
@@ -1102,7 +1116,7 @@ def test_load_config_zone_str_to_list(tmp_path):
     assert cfg.azure.zone == ["eastus-1"]
 
 
-def test_load_config_zone_list_is_left_alone(tmp_path):
+def test_load_config_zone_list_is_left_alone(tmp_path: Path) -> None:
     """Several zones keep their configured order, which is the order they are tried in."""
     config_dict = {
         "provider": "gcp",
@@ -1116,7 +1130,7 @@ def test_load_config_zone_list_is_left_alone(tmp_path):
     assert cfg.gcp.zone == ["us-central1-c", "us-central1-a"]
 
 
-def test_load_config_zone_absent_stays_none(tmp_path):
+def test_load_config_zone_absent_stays_none(tmp_path: Path) -> None:
     """No zone means the whole region is available, which is not the same as an empty list."""
     config_dict = {"provider": "gcp", "gcp": {}, "run": {}}
     file_path = tmp_path / "config.yaml"
@@ -1126,7 +1140,7 @@ def test_load_config_zone_absent_stays_none(tmp_path):
     assert cfg.gcp.zone is None
 
 
-def test_empty_zone_list_is_rejected(tmp_path: Any) -> None:
+def test_empty_zone_list_is_rejected(tmp_path: Path) -> None:
     """An empty list says nothing; None already means "anywhere in the region".
 
     Parameters:

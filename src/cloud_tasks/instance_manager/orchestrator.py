@@ -1650,6 +1650,11 @@ export RMS_CLOUD_TASKS_RETRY_ON_EXCEPTION={self._run_config.retry_on_exception}
 
         # Define the synchronous function to start a single instance
         async def start_single_instance() -> str | None:
+            """Create one instance of the job's chosen type.
+
+            Returns:
+                str | None: The new instance's ID, or None if it could not be created.
+            """
             async with semaphore:
                 try:
                     # Run the async operation

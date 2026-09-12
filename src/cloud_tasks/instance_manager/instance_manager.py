@@ -1,3 +1,9 @@
+"""
+The interface every cloud provider's instance manager implements, and the parts of it that
+are the same whoever the provider is: matching instance types against the configured
+constraints, saying what a task costs to run on one, and choosing zones.
+"""
+
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -323,17 +329,49 @@ class InstanceManager(ABC):
 
         checks: list[ConstraintCheck] = []
 
-        def check(name: str, limit: Any, actual: Any, satisfied: bool, prefer_larger: bool | None):
+        def check(
+            name: str, limit: Any, actual: Any, satisfied: bool, prefer_larger: bool | None
+        ) -> None:
+            """Record the result of testing one constraint against this instance type.
+
+            Parameters:
+                name: The configuration option the constraint comes from.
+                limit: The value the configuration asks for.
+                actual: What this instance type provides.
+                satisfied: Whether this instance type meets the constraint.
+                prefer_larger: True when a larger actual is closer to meeting limit, False
+                    when a smaller one is, None for an equality constraint.
+            """
             checks.append(ConstraintCheck(name, limit, actual, satisfied, prefer_larger))
 
-        def check_min(name: str, actual: Any, limit: Any = None, as_name: str | None = None):
+        def check_min(
+            name: str, actual: Any, limit: Any = None, as_name: str | None = None
+        ) -> None:
+            """Record a lower-bound constraint, skipping it if the config didn't set one.
+
+            Parameters:
+                name: The configuration option holding the lower bound.
+                actual: What this instance type provides.
+                limit: The bound, if it isn't simply constraints[name].
+                as_name: The name to report the constraint under, if not `name`.
+            """
             if limit is None:
                 limit = constraints.get(name)
             if limit is None:
                 return
             check(as_name or name, limit, actual, actual >= limit, True)
 
-        def check_max(name: str, actual: Any, limit: Any = None, as_name: str | None = None):
+        def check_max(
+            name: str, actual: Any, limit: Any = None, as_name: str | None = None
+        ) -> None:
+            """Record an upper-bound constraint, skipping it if the config didn't set one.
+
+            Parameters:
+                name: The configuration option holding the upper bound.
+                actual: What this instance type provides.
+                limit: The bound, if it isn't simply constraints[name].
+                as_name: The name to report the constraint under, if not `name`.
+            """
             if limit is None:
                 limit = constraints.get(name)
             if limit is None:
@@ -570,11 +608,26 @@ class InstanceManager(ABC):
                 return float("inf")
 
         def closest(group: list[list[ConstraintCheck]]) -> list[ConstraintCheck]:
-            """Return the failed checks of the instance type asking for the least change."""
+            """Return the failed checks of the instance type asking for the least change.
+
+            Parameters:
+                group: One entry per instance type, each the checks that type failed.
+
+            Returns:
+                list[ConstraintCheck]: The failed checks of the nearest instance type.
+            """
             return min(group, key=lambda failed: max(shortfall(check) for check in failed))
 
         def admitted(group: list[list[ConstraintCheck]], targets: dict[str, Any]) -> int:
-            """Count the instance types that these relaxed limits would let in."""
+            """Count the instance types that these relaxed limits would let in.
+
+            Parameters:
+                group: One entry per instance type, each the checks that type failed.
+                targets: The constraint name mapped to the value it would be relaxed to.
+
+            Returns:
+                int: How many instance types would then match.
+            """
             total = 0
             for failed in group:
                 if all(
@@ -635,7 +688,12 @@ class InstanceManager(ABC):
             return
 
         def report(text: str, indent: str = "") -> None:
-            """Log one paragraph, wrapped, with continuations indented under it."""
+            """Log one paragraph, wrapped, with continuations indented under it.
+
+            Parameters:
+                text: The paragraph to log.
+                indent: Prefix for every line of it.
+            """
             for line in wrap_log_text(text, indent="  "):
                 self._logger.error(f"{indent}{line}")
 

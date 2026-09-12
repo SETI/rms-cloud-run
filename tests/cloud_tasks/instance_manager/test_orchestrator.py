@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -106,7 +107,7 @@ def orchestrator(mock_config):
     yield orchestrator
 
 
-def test_orchestrator_init_missing_job_id(mock_config: Mock) -> None:
+def test_orchestrator_init_missing_job_id(mock_config: Any) -> None:
     """InstanceOrchestrator.__init__ raises ValueError when provider_config.job_id is missing."""
     mock_config.get_provider_config.return_value.job_id = None
     with pytest.raises(ValueError) as exc_info:
@@ -114,7 +115,7 @@ def test_orchestrator_init_missing_job_id(mock_config: Mock) -> None:
     assert "job_id" in str(exc_info.value).lower()
 
 
-def test_orchestrator_init_missing_queue_name(mock_config: Mock) -> None:
+def test_orchestrator_init_missing_queue_name(mock_config: Any) -> None:
     """InstanceOrchestrator.__init__ raises ValueError when provider_config.queue_name is missing."""
     mock_config.get_provider_config.return_value.queue_name = None
     with pytest.raises(ValueError) as exc_info:
@@ -122,7 +123,7 @@ def test_orchestrator_init_missing_queue_name(mock_config: Mock) -> None:
     assert "queue_name" in str(exc_info.value).lower() or "queue" in str(exc_info.value).lower()
 
 
-def test_orchestrator_init_missing_run_config(mock_config: Mock) -> None:
+def test_orchestrator_init_missing_run_config(mock_config: Any) -> None:
     """InstanceOrchestrator.__init__ raises ValueError when config.run is missing."""
     mock_config.run = None
     with pytest.raises(ValueError) as exc_info:
@@ -131,7 +132,7 @@ def test_orchestrator_init_missing_run_config(mock_config: Mock) -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_job_instances_list_raises(orchestrator: InstanceOrchestrator) -> None:
+async def test_get_job_instances_list_raises(orchestrator: Any) -> None:
     """A listing that fails raises rather than reporting a pool of zero instances.
 
     Zeros would be indistinguishable from a job with nothing running, which is the
@@ -148,7 +149,7 @@ async def test_get_job_instances_list_raises(orchestrator: InstanceOrchestrator)
 
 
 @pytest.mark.asyncio
-async def test_get_job_instances_empty_running(orchestrator: InstanceOrchestrator) -> None:
+async def test_get_job_instances_empty_running(orchestrator: Any) -> None:
     """get_job_instances returns zero counts and 'No running instances' when list is empty."""
     assert orchestrator._instance_manager is not None
     with patch.object(orchestrator, "_initialize_pricing_info", new_callable=AsyncMock):
@@ -161,7 +162,7 @@ async def test_get_job_instances_empty_running(orchestrator: InstanceOrchestrato
 
 
 @pytest.mark.asyncio
-async def test_provision_instances_parallel(orchestrator):
+async def test_provision_instances_parallel(orchestrator: Any) -> None:
     """Test that instances are provisioned in parallel with a maximum concurrency limit."""
     # Arrange
     instance_count = 5
@@ -209,7 +210,7 @@ async def test_provision_instances_parallel(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_provision_instances_handles_failures(orchestrator):
+async def test_provision_instances_handles_failures(orchestrator: Any) -> None:
     """Test that provision_instances correctly handles instance creation failures."""
     # Arrange
     instance_count = 5
@@ -244,7 +245,7 @@ async def test_provision_instances_handles_failures(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_dry_run_prevents_instance_creation(orchestrator):
+async def test_dry_run_prevents_instance_creation(orchestrator: Any) -> None:
     """Test that dry_run mode prevents instance creation and sets running to False."""
     # Arrange
     orchestrator._dry_run = True
@@ -298,7 +299,7 @@ def _make_instance(
     }
 
 
-def test_record_keepalive(orchestrator):
+def test_record_keepalive(orchestrator: Any) -> None:
     """record_keepalive tracks the last-heard time and that any instance was heard."""
     assert not orchestrator._keepalive_ever_heard
     orchestrator.record_keepalive("instance-1", "2026-01-01T00:00:00+00:00")
@@ -308,7 +309,9 @@ def test_record_keepalive(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_terminates_silent_instance(orchestrator):
+async def test_check_keepalives_terminates_silent_instance(
+    orchestrator: Any,
+) -> None:
     """An instance that stops sending keep-alives is terminated."""
     import time
 
@@ -335,7 +338,9 @@ async def test_check_keepalives_terminates_silent_instance(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_aborts_when_no_instance_ever_heard(orchestrator):
+async def test_check_keepalives_aborts_when_no_instance_ever_heard(
+    orchestrator: Any,
+) -> None:
     """If every instance misses the startup timeout and none was ever heard, abort the job."""
     import time
 
@@ -361,7 +366,9 @@ async def test_check_keepalives_aborts_when_no_instance_ever_heard(orchestrator)
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_waits_for_young_instances(orchestrator):
+async def test_check_keepalives_waits_for_young_instances(
+    orchestrator: Any,
+) -> None:
     """If some instances are still within the startup window, nothing is terminated yet."""
     import time
 
@@ -384,7 +391,9 @@ async def test_check_keepalives_waits_for_young_instances(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_terminates_startup_failure_when_others_alive(orchestrator):
+async def test_check_keepalives_terminates_startup_failure_when_others_alive(
+    orchestrator: Any,
+) -> None:
     """If other instances are alive, a startup-timeout instance is terminated individually."""
     import time
 
@@ -412,7 +421,7 @@ async def test_check_keepalives_terminates_startup_failure_when_others_alive(orc
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_disabled_timeouts(orchestrator):
+async def test_check_keepalives_disabled_timeouts(orchestrator: Any) -> None:
     """Timeouts of 0 disable the keep-alive checks."""
     import time
 
@@ -435,7 +444,9 @@ async def test_check_keepalives_disabled_timeouts(orchestrator):
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_cleans_up_gone_instances(orchestrator):
+async def test_check_keepalives_cleans_up_gone_instances(
+    orchestrator: Any,
+) -> None:
     """Tracking data is dropped for instances that no longer exist."""
     orchestrator._keepalive_startup_timeout = 600.0
     orchestrator._keepalive_timeout = 300.0
@@ -453,7 +464,7 @@ async def test_check_keepalives_cleans_up_gone_instances(orchestrator):
     assert "instance-1" in orchestrator._keepalive_last_heard
 
 
-def test_startup_script_exports_keepalive_interval(orchestrator, mock_config):
+def test_startup_script_exports_keepalive_interval(orchestrator: Any, mock_config: Any) -> None:
     """The generated startup script exports the configured keep-alive interval."""
     mock_config.run.keepalive_interval = 45
     mock_config.run.startup_script = "#!/bin/bash\necho 'Hello World'"
@@ -461,7 +472,9 @@ def test_startup_script_exports_keepalive_interval(orchestrator, mock_config):
     assert "export RMS_CLOUD_TASKS_KEEPALIVE_INTERVAL=45" in script
 
 
-def test_startup_script_omits_keepalive_interval_when_unset(orchestrator, mock_config):
+def test_startup_script_omits_keepalive_interval_when_unset(
+    orchestrator: Any, mock_config: Any
+) -> None:
     """The generated startup script omits the keep-alive interval when not configured."""
     mock_config.run.keepalive_interval = None
     mock_config.run.startup_script = "#!/bin/bash\necho 'Hello World'"
@@ -469,7 +482,7 @@ def test_startup_script_omits_keepalive_interval_when_unset(orchestrator, mock_c
     assert "RMS_CLOUD_TASKS_KEEPALIVE_INTERVAL" not in script
 
 
-def test_startup_script_exports_max_memory(orchestrator, mock_config):
+def test_startup_script_exports_max_memory(orchestrator: Any, mock_config: Any) -> None:
     """The generated startup script exports the configured memory limit."""
     mock_config.run.keepalive_interval = None
     mock_config.run.max_memory_allowed_per_task = 2.5
@@ -478,7 +491,7 @@ def test_startup_script_exports_max_memory(orchestrator, mock_config):
     assert "export RMS_CLOUD_TASKS_MAX_MEMORY_ALLOWED_PER_TASK=2.5" in script
 
 
-def test_startup_script_omits_max_memory_when_unset(orchestrator, mock_config):
+def test_startup_script_omits_max_memory_when_unset(orchestrator: Any, mock_config: Any) -> None:
     """The generated startup script omits the memory limit when not configured."""
     mock_config.run.keepalive_interval = None
     mock_config.run.max_memory_allowed_per_task = None
@@ -488,7 +501,9 @@ def test_startup_script_omits_max_memory_when_unset(orchestrator, mock_config):
 
 
 @pytest.mark.asyncio
-async def test_check_keepalives_abort_terminates_starting_instances(orchestrator):
+async def test_check_keepalives_abort_terminates_starting_instances(
+    orchestrator: Any,
+) -> None:
     """A full abort terminates instances still in the 'starting' state, not just 'running'."""
     import time
 
@@ -553,7 +568,9 @@ def _instance_rows(lines: list[str]) -> dict[str, str]:
 
 
 @pytest.mark.asyncio
-async def test_instance_table_is_the_summary_logged_by_a_run(orchestrator) -> None:
+async def test_instance_table_is_the_summary_logged_by_a_run(
+    orchestrator: Any,
+) -> None:
     """There is one table, and it is what the run reports.
 
     An instance table and a separate summary of the same instances by type meant reading
@@ -579,7 +596,9 @@ async def test_instance_table_is_the_summary_logged_by_a_run(orchestrator) -> No
 
 
 @pytest.mark.asyncio
-async def test_instance_table_totals_only_what_is_running(orchestrator) -> None:
+async def test_instance_table_totals_only_what_is_running(
+    orchestrator: Any,
+) -> None:
     """Terminated instances are listed but cost nothing and count for nothing."""
     orchestrator._all_instance_info = {"n1-standard-2": {"vcpu": 2}}
     orchestrator._pricing_info = {
@@ -601,7 +620,9 @@ async def test_instance_table_totals_only_what_is_running(orchestrator) -> None:
 
 
 @pytest.mark.asyncio
-async def test_instance_table_prices_from_a_wildcard_zone(orchestrator) -> None:
+async def test_instance_table_prices_from_a_wildcard_zone(
+    orchestrator: Any,
+) -> None:
     """GCP prices per region, so a price may be recorded against a wildcard zone."""
     orchestrator._all_instance_info = {"n1-standard-2": {"vcpu": 2}}
     orchestrator._pricing_info = {
@@ -614,7 +635,7 @@ async def test_instance_table_prices_from_a_wildcard_zone(orchestrator) -> None:
     assert "$2.50" in table
 
 
-def test_instance_table_rows_sorted_with_details(orchestrator) -> None:
+def test_instance_table_rows_sorted_with_details(orchestrator: Any) -> None:
     """One row per instance, sorted by state then ID, carrying the instance's details."""
     orchestrator._running = True
     orchestrator._keepalive_startup_timeout = 600.0
@@ -638,7 +659,9 @@ def test_instance_table_rows_sorted_with_details(orchestrator) -> None:
     assert cells[9].startswith("waiting for first keep-alive")
 
 
-def test_instance_table_orders_by_what_instances_are_doing(orchestrator) -> None:
+def test_instance_table_orders_by_what_instances_are_doing(
+    orchestrator: Any,
+) -> None:
     """Instances doing the work come first; the ones on their way out come last."""
     orchestrator._running = True
     instances = [
@@ -654,7 +677,7 @@ def test_instance_table_orders_by_what_instances_are_doing(orchestrator) -> None
     assert list(rows) == ["a", "b", "c", "d", "e"]
 
 
-def test_instance_table_columns_size_to_content(orchestrator) -> None:
+def test_instance_table_columns_size_to_content(orchestrator: Any) -> None:
     """Columns widen to fit their contents so long GCP instance names stay aligned."""
     orchestrator._running = True
     long_id = "rmscr-parallel-addition-job-1riovtucuu1o1dx9lotafw5pb"
@@ -669,7 +692,7 @@ def test_instance_table_columns_size_to_content(orchestrator) -> None:
     assert len(set(len(line) for line in table_lines)) == 1
 
 
-def test_instance_table_keepalive_states(orchestrator) -> None:
+def test_instance_table_keepalive_states(orchestrator: Any) -> None:
     """Each keep-alive state - healthy, overdue, and never heard from - is reported."""
     import time
 
@@ -712,7 +735,7 @@ def test_instance_table_keepalive_states(orchestrator) -> None:
     assert "not active" in rows["gone"]
 
 
-def test_instance_table_not_monitored_when_not_running(orchestrator) -> None:
+def test_instance_table_not_monitored_when_not_running(orchestrator: Any) -> None:
     """The status command builds an orchestrator that never receives keep-alives.
 
     It must not report every healthy worker as silent, so the keep-alive columns say
@@ -730,7 +753,9 @@ def test_instance_table_not_monitored_when_not_running(orchestrator) -> None:
     assert "timed out" not in row
 
 
-def test_instance_table_not_monitored_when_timeouts_disabled(orchestrator) -> None:
+def test_instance_table_not_monitored_when_timeouts_disabled(
+    orchestrator: Any,
+) -> None:
     """With both timeouts disabled there is nothing to be overdue against."""
     orchestrator._running = True
     orchestrator._keepalive_startup_timeout = 0.0
@@ -743,7 +768,7 @@ def test_instance_table_not_monitored_when_timeouts_disabled(orchestrator) -> No
     assert "not monitored" in row
 
 
-def test_instance_table_azure_missing_fields(orchestrator) -> None:
+def test_instance_table_azure_missing_fields(orchestrator: Any) -> None:
     """Azure instances report a location and no creation time; the row still renders."""
     orchestrator._running = True
     instance = {
@@ -758,7 +783,7 @@ def test_instance_table_azure_missing_fields(orchestrator) -> None:
     assert "eastus" in row
 
 
-def test_keepalive_from_terminated_instance_is_ignored(orchestrator) -> None:
+def test_keepalive_from_terminated_instance_is_ignored(orchestrator: Any) -> None:
     """A keep-alive that arrives after we terminated an instance doesn't revive it.
 
     Workers send keep-alives on a timer, so one can be in flight when its instance is
@@ -774,7 +799,7 @@ def test_keepalive_from_terminated_instance_is_ignored(orchestrator) -> None:
     assert orchestrator._keepalive_ever_heard is False
 
 
-def test_keepalive_from_live_instance_is_recorded(orchestrator) -> None:
+def test_keepalive_from_live_instance_is_recorded(orchestrator: Any) -> None:
     """Instances we haven't terminated are still tracked."""
     orchestrator._terminated_instances.add("instance-1")
 
@@ -785,7 +810,9 @@ def test_keepalive_from_live_instance_is_recorded(orchestrator) -> None:
 
 
 @pytest.mark.asyncio
-async def test_terminating_an_instance_stops_its_keepalives_counting(orchestrator) -> None:
+async def test_terminating_an_instance_stops_its_keepalives_counting(
+    orchestrator: Any,
+) -> None:
     """An instance terminated for being unresponsive is remembered as gone."""
     orchestrator.record_keepalive("instance-1")
 
@@ -796,7 +823,9 @@ async def test_terminating_an_instance_stops_its_keepalives_counting(orchestrato
     assert "instance-1" not in orchestrator._keepalive_last_heard
 
 
-def test_record_spot_termination_forgets_the_instance(orchestrator, caplog) -> None:
+def test_record_spot_termination_forgets_the_instance(
+    orchestrator: Any, caplog: pytest.LogCaptureFixture
+) -> None:
     """A reclaimed instance stops being watched for keep-alives and is counted."""
     orchestrator.record_keepalive("instance-1")
 
@@ -817,7 +846,9 @@ def test_record_spot_termination_forgets_the_instance(orchestrator, caplog) -> N
 
 
 @pytest.mark.asyncio
-async def test_scaling_refills_a_pool_that_lost_instances(orchestrator) -> None:
+async def test_scaling_refills_a_pool_that_lost_instances(
+    orchestrator: Any,
+) -> None:
     """Losing an instance to a spot reclamation is made good on the next cycle.
 
     The minimum constraints describe the pool, so they are compared against the pool the
@@ -846,7 +877,9 @@ async def test_scaling_refills_a_pool_that_lost_instances(orchestrator) -> None:
 
 
 @pytest.mark.asyncio
-async def test_scaling_still_refuses_a_pool_below_the_minimum(orchestrator) -> None:
+async def test_scaling_still_refuses_a_pool_below_the_minimum(
+    orchestrator: Any,
+) -> None:
     """The minimum is still enforced against the pool the job would end up with."""
     orchestrator._running = True
     orchestrator._min_instances = 4
@@ -867,7 +900,9 @@ async def test_scaling_still_refuses_a_pool_below_the_minimum(orchestrator) -> N
 
 
 @pytest.mark.asyncio
-async def test_scaling_starts_nothing_when_the_instance_listing_fails(orchestrator) -> None:
+async def test_scaling_starts_nothing_when_the_instance_listing_fails(
+    orchestrator: Any,
+) -> None:
     """A pass that cannot see the pool provisions nothing at all.
 
     Every budget the pass computes is the configured maximum less what is already
@@ -893,7 +928,9 @@ async def test_scaling_starts_nothing_when_the_instance_listing_fails(orchestrat
 
 
 @pytest.mark.asyncio
-async def test_scaling_says_why_it_started_nothing(orchestrator, caplog) -> None:
+async def test_scaling_says_why_it_started_nothing(
+    orchestrator: Any, caplog: pytest.LogCaptureFixture
+) -> None:
     """The skipped pass is reported, so a pool that stops growing has a reason in the log."""
     orchestrator._running = True
     orchestrator._max_instances = 25
@@ -908,7 +945,9 @@ async def test_scaling_says_why_it_started_nothing(orchestrator, caplog) -> None
 
 
 @pytest.mark.asyncio
-async def test_local_credentials_warning_is_shown_and_can_be_declined(orchestrator, caplog) -> None:
+async def test_local_credentials_warning_is_shown_and_can_be_declined(
+    orchestrator: Any, caplog: pytest.LogCaptureFixture
+) -> None:
     """A credential that won't last the job is called out before any instance is started."""
     orchestrator._instance_manager.local_credential_warning = Mock(
         return_value="These credentials expire.\nUse a service account."
@@ -925,7 +964,9 @@ async def test_local_credentials_warning_is_shown_and_can_be_declined(orchestrat
 
 
 @pytest.mark.asyncio
-async def test_local_credentials_warning_can_be_accepted(orchestrator) -> None:
+async def test_local_credentials_warning_can_be_accepted(
+    orchestrator: Any,
+) -> None:
     """Answering yes gets on with the job."""
     orchestrator._instance_manager.local_credential_warning = Mock(return_value="expiring")
 
@@ -934,7 +975,9 @@ async def test_local_credentials_warning_can_be_accepted(orchestrator) -> None:
 
 
 @pytest.mark.asyncio
-async def test_local_credentials_warning_does_not_block_a_non_interactive_run(orchestrator) -> None:
+async def test_local_credentials_warning_does_not_block_a_non_interactive_run(
+    orchestrator: Any,
+) -> None:
     """Nothing is there to answer the question when the job is started by a script."""
     orchestrator._instance_manager.local_credential_warning = Mock(return_value="expiring")
 
@@ -945,7 +988,7 @@ async def test_local_credentials_warning_does_not_block_a_non_interactive_run(or
 
 
 @pytest.mark.asyncio
-async def test_no_credentials_warning_asks_nothing(orchestrator) -> None:
+async def test_no_credentials_warning_asks_nothing(orchestrator: Any) -> None:
     """Credentials that will last the job are not worth interrupting anyone about."""
     orchestrator._instance_manager.local_credential_warning = Mock(return_value=None)
 
@@ -1014,7 +1057,9 @@ def _wire_sync_instance_manager_methods(orchestrator) -> None:
     orchestrator._instance_manager.restartable_states = ("stopped", "terminated")
 
 
-def test_instance_table_counts_the_tasks_the_instances_can_run(orchestrator) -> None:
+def test_instance_table_counts_the_tasks_the_instances_can_run(
+    orchestrator: Any,
+) -> None:
     """Each row says how many tasks that instance can run, and the total is the capacity."""
     _configure_run(orchestrator, cpus_per_task=4)
     orchestrator._all_instance_info = {"n1-standard-2": {"vcpu": 32, "mem_gb": 128}}
@@ -1032,7 +1077,9 @@ def test_instance_table_counts_the_tasks_the_instances_can_run(orchestrator) -> 
     assert "at 4 vCPU(s) per task" in table
 
 
-def test_instance_table_task_count_respects_tasks_per_instance_limits(orchestrator) -> None:
+def test_instance_table_task_count_respects_tasks_per_instance_limits(
+    orchestrator: Any,
+) -> None:
     """max_tasks_per_instance bounds the capacity the table reports."""
     _configure_run(orchestrator, cpus_per_task=1, max_tasks_per_instance=3)
     orchestrator._all_instance_info = {"n1-standard-2": {"vcpu": 32, "mem_gb": 128}}
@@ -1042,7 +1089,9 @@ def test_instance_table_task_count_respects_tasks_per_instance_limits(orchestrat
     assert "3 task(s) can run at once" in table
 
 
-def test_instance_table_says_when_cpus_per_task_was_raised_for_memory(orchestrator) -> None:
+def test_instance_table_says_when_cpus_per_task_was_raised_for_memory(
+    orchestrator: Any,
+) -> None:
     """With allow_cpu_wasting the vCPUs per task is not what the configuration asked for."""
     _configure_run(orchestrator, cpus_per_task=1, min_memory_per_task=32, allow_cpu_wasting=True)
     # 8 GB per vCPU, so a 32 GB task needs 4 vCPUs and only 8 tasks fit
@@ -1057,7 +1106,9 @@ def test_instance_table_says_when_cpus_per_task_was_raised_for_memory(orchestrat
 
 
 @pytest.mark.asyncio
-async def test_provision_restarts_stopped_instances_before_creating_new_ones(orchestrator):
+async def test_provision_restarts_stopped_instances_before_creating_new_ones(
+    orchestrator: Any,
+) -> None:
     """A stopped instance is cheaper and faster to bring back than a replacement for it."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[
@@ -1083,7 +1134,9 @@ async def test_provision_restarts_stopped_instances_before_creating_new_ones(orc
 
 
 @pytest.mark.asyncio
-async def test_provision_creates_nothing_when_restarts_cover_the_shortfall(orchestrator):
+async def test_provision_creates_nothing_when_restarts_cover_the_shortfall(
+    orchestrator: Any,
+) -> None:
     """Restarting is provisioning; it isn't done on top of creating the same instances again."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[_make_instance("stopped-1", state="terminated")]
@@ -1099,7 +1152,9 @@ async def test_provision_creates_nothing_when_restarts_cover_the_shortfall(orche
 
 
 @pytest.mark.asyncio
-async def test_provision_restarts_no_more_than_the_pool_is_short_by(orchestrator):
+async def test_provision_restarts_no_more_than_the_pool_is_short_by(
+    orchestrator: Any,
+) -> None:
     """Restarting everything that is stopped would grow the pool past what was asked for."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[
@@ -1119,7 +1174,9 @@ async def test_provision_restarts_no_more_than_the_pool_is_short_by(orchestrator
 
 
 @pytest.mark.asyncio
-async def test_provision_does_not_create_where_a_stopped_instance_would_not_restart(orchestrator):
+async def test_provision_does_not_create_where_a_stopped_instance_would_not_restart(
+    orchestrator: Any,
+) -> None:
     """A zone that won't give an instance back has no capacity for a new one either."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[_make_instance("stopped-1", state="terminated", zone="us-central1-a")]
@@ -1141,7 +1198,9 @@ async def test_provision_does_not_create_where_a_stopped_instance_would_not_rest
 
 
 @pytest.mark.asyncio
-async def test_provision_only_excludes_zones_holding_the_type_it_would_create(orchestrator):
+async def test_provision_only_excludes_zones_holding_the_type_it_would_create(
+    orchestrator: Any,
+) -> None:
     """A stopped instance of some other type says nothing about the type this job creates."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[
@@ -1163,8 +1222,8 @@ async def test_provision_only_excludes_zones_holding_the_type_it_would_create(or
 
 @pytest.mark.asyncio
 async def test_provision_excludes_zones_of_stopped_instances_it_had_no_room_to_restart(
-    orchestrator,
-):
+    orchestrator: Any,
+) -> None:
     """A zone already holding a stopped instance gets that one back before it gets a new one."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[
@@ -1192,7 +1251,9 @@ async def test_provision_excludes_zones_of_stopped_instances_it_had_no_room_to_r
 
 
 @pytest.mark.asyncio
-async def test_restarted_instance_is_alive_again_for_keep_alive_purposes(orchestrator):
+async def test_restarted_instance_is_alive_again_for_keep_alive_purposes(
+    orchestrator: Any,
+) -> None:
     """An instance that comes back must have its keep-alives counted again, not ignored."""
     orchestrator.record_spot_termination("stopped-1")
     assert "stopped-1" in orchestrator._terminated_instances
@@ -1215,7 +1276,9 @@ async def test_restarted_instance_is_alive_again_for_keep_alive_purposes(orchest
 
 
 @pytest.mark.asyncio
-async def test_provision_creates_normally_when_the_instance_listing_fails(orchestrator):
+async def test_provision_creates_normally_when_the_instance_listing_fails(
+    orchestrator: Any,
+) -> None:
     """Not knowing what is stopped is no reason to stop growing the pool."""
     orchestrator.list_job_instances = AsyncMock(side_effect=RuntimeError("API is down"))
     orchestrator._instance_manager.restart_instance = AsyncMock()
@@ -1231,7 +1294,9 @@ async def test_provision_creates_normally_when_the_instance_listing_fails(orches
 
 
 @pytest.mark.asyncio
-async def test_terminate_all_instances_deletes_the_stopped_ones_too(orchestrator):
+async def test_terminate_all_instances_deletes_the_stopped_ones_too(
+    orchestrator: Any,
+) -> None:
     """A stopped instance keeps its disk, and its bill, until something deletes it."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[
@@ -1259,7 +1324,9 @@ async def test_terminate_all_instances_deletes_the_stopped_ones_too(orchestrator
 
 
 @pytest.mark.asyncio
-async def test_terminate_all_instances_survives_one_that_will_not_go(orchestrator):
+async def test_terminate_all_instances_survives_one_that_will_not_go(
+    orchestrator: Any,
+) -> None:
     """One instance refusing to be deleted must not leave the rest of them running."""
     orchestrator.list_job_instances = AsyncMock(
         return_value=[
@@ -1287,7 +1354,9 @@ async def test_terminate_all_instances_survives_one_that_will_not_go(orchestrato
 
 
 @pytest.mark.asyncio
-async def test_terminate_all_instances_goes_at_every_instance_at_once(orchestrator):
+async def test_terminate_all_instances_goes_at_every_instance_at_once(
+    orchestrator: Any,
+) -> None:
     """Terminating is what a user waits through at the end of a job, so it isn't batched.
 
     Each termination takes the provider the better part of a minute, so a concurrency limit
@@ -1316,7 +1385,9 @@ async def test_terminate_all_instances_goes_at_every_instance_at_once(orchestrat
 
 
 @pytest.mark.asyncio
-async def test_a_deleted_instance_is_not_a_restart_candidate(orchestrator) -> None:
+async def test_a_deleted_instance_is_not_a_restart_candidate(
+    orchestrator: Any,
+) -> None:
     """An instance this job deleted is never coming back, however long it stays listed.
 
     AWS keeps a deleted instance in its listing for about an hour. Trying to restart one
@@ -1344,7 +1415,9 @@ async def test_a_deleted_instance_is_not_a_restart_candidate(orchestrator) -> No
 
 
 @pytest.mark.asyncio
-async def test_only_the_states_the_provider_calls_restartable_are_restarted(orchestrator) -> None:
+async def test_only_the_states_the_provider_calls_restartable_are_restarted(
+    orchestrator: Any,
+) -> None:
     """ "terminated" is a stopped VM on GCP and a deleted one on AWS, so the provider decides."""
     orchestrator._instance_manager.restartable_states = ("stopped",)
     orchestrator.list_job_instances = AsyncMock(
@@ -1369,7 +1442,7 @@ async def test_only_the_states_the_provider_calls_restartable_are_restarted(orch
 
 @pytest.mark.asyncio
 async def test_a_termination_that_fails_is_retried_and_then_reported(
-    orchestrator, caplog: pytest.LogCaptureFixture
+    orchestrator: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
     """An instance that would not go is still running and still being billed for."""
     orchestrator._TERMINATION_RETRY_DELAY = 0.0
@@ -1397,7 +1470,9 @@ async def test_a_termination_that_fails_is_retried_and_then_reported(
 
 
 @pytest.mark.asyncio
-async def test_an_instance_without_a_zone_still_terminates(orchestrator) -> None:
+async def test_an_instance_without_a_zone_still_terminates(
+    orchestrator: Any,
+) -> None:
     """Not every provider reports a zone, and a missing one must not abort the deletion."""
     instance = _make_instance("no-zone")
     del instance["zone"]

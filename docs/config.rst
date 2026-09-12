@@ -385,7 +385,6 @@ The available provider-specific options are:
     ``roles/iam.serviceAccountTokenCreator`` on it. Note that this does not make a personal
     login last longer: the impersonated token is refreshed with the credentials underneath
     it, so a login that expires takes the impersonation with it
-    on cloud-based instances to have access to system resources
 
 In addition, all run options can be specified in a provider-specific section, in which
 case they will override the global run options, if any.
@@ -594,9 +593,10 @@ total number of instances that will be started.
         echo "Hello, world!"
 
 In this case, the system starts by looking at all available ``n2-``, ``n3-``, and ``n4-``
-instance types that meet our vCPU and memory constraints while minimizing price per vCPU.
-This results in the selection of ``n4-highmem-32`` as the optimal instance type with the
-lowest cost of $0.0622/vCPU/hour while supporting the most vCPUs in a single instance.
+instance types that meet our vCPU and memory constraints, and among them picks the one that
+runs a task for the least money. This results in the selection of ``n4-highmem-32`` as the
+optimal instance type, at $0.0622/vCPU/hour and so $0.2488 per task per hour at 4 vCPUs per
+task, while supporting the most tasks in a single instance.
 For the number of instances, the system starts with the maximum allowed, 20. However, with
 a maximum of 100 simultaneous tasks, 32 vCPUs, and 4 vCPUs per task, this is reduced to 12.
 Finally, at a cost of $1.99/hour for each instance, the price limit of $15.00 per hour
