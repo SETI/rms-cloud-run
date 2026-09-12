@@ -260,7 +260,10 @@ if you do not give it sufficient constraints.
   the worker process to limit the number of tasks that can be run simultaneously
   on a single instance
 * ``min_tasks_per_instance``: The minimum number of tasks per instance
-* ``max_tasks_per_instance``: The maximum number of tasks per instance
+* ``max_tasks_per_instance``: The maximum number of tasks per instance. Both are counted in
+  tasks: an instance qualifies on how many tasks it would run, not on whether its vCPUs
+  divide evenly, so a machine with vCPUs left over is still eligible and it is the price
+  per task that decides whether it is the one chosen
 * ``min_simultaneous_tasks``: The minimum number of tasks to run simultaneously
 * ``max_simultaneous_tasks``: The maximum number of tasks to run simultaneously
 * ``min_total_price_per_hour``: The minimum total price per hour to use

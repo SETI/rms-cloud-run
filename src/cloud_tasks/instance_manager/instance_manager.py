@@ -416,24 +416,21 @@ class InstanceManager(ABC):
         if constraints.get("max_cpu_rank") is not None:
             check_max("max_cpu_rank", instance_info["cpu_rank"])
 
-        # min/max_tasks_per_instance are constraints on the number of vCPUs once the vCPUs
-        # each task needs is known, so they are reported under their own names
         check_min("min_cpu", num_cpus)
         check_max("max_cpu", num_cpus)
+
+        # min/max_tasks_per_instance are limits on the tasks an instance runs, so they are
+        # compared against the tasks it would actually run. Turning them into vCPU bounds
+        # instead rejected an instance for the vCPUs it would leave idle rather than for the
+        # tasks it would run: at 3 vCPUs a task and a limit of 2 tasks, an 8-vCPU machine
+        # runs exactly 2 and was still turned away because 8 is more than 6. Whether those
+        # spare vCPUs are worth paying for is a question about price, and price is what
+        # chooses between the instance types that qualify.
+        task_capacity = int(num_cpus // cpus_per_task)
         if min_tasks_per_instance is not None:
-            check_min(
-                "min_tasks_per_instance",
-                num_cpus,
-                limit=cpus_per_task * min_tasks_per_instance,
-                as_name="min_tasks_per_instance (vCPUs needed)",
-            )
+            check_min("min_tasks_per_instance", task_capacity)
         if max_tasks_per_instance is not None:
-            check_max(
-                "max_tasks_per_instance",
-                num_cpus,
-                limit=cpus_per_task * max_tasks_per_instance,
-                as_name="max_tasks_per_instance (vCPUs allowed)",
-            )
+            check_max("max_tasks_per_instance", task_capacity)
 
         check_min("min_total_memory", instance_info["mem_gb"])
         check_max("max_total_memory", instance_info["mem_gb"])

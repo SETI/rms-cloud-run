@@ -894,3 +894,89 @@ class TestPricePerTask:
         by_task = sorted(types, key=lambda t: instance_manager.price_per_task(t, constraints))
         by_vcpu = sorted(types, key=lambda t: t["total_price"] / t["vcpu"])
         assert [t["name"] for t in by_task] == [t["name"] for t in by_vcpu]
+
+
+class TestTasksPerInstanceConstraints:
+    """Validates that the task limits are tested against tasks, not against vCPUs."""
+
+    @pytest.fixture
+    def instance_manager(self) -> InstanceManager:
+        """Create a concrete instance manager for testing.
+
+        Returns:
+            InstanceManager: A manager whose provider calls do nothing.
+        """
+        return _concrete_instance_manager()
+
+    def test_spare_vcpus_do_not_disqualify_an_instance(self, instance_manager: InstanceManager):
+        """An instance that runs exactly the allowed number of tasks qualifies.
+
+        At 3 vCPUs a task with a limit of 2 tasks, an 8-vCPU machine runs exactly 2 and has
+        2 vCPUs left over. Whether those are worth paying for is a question about price, and
+        price is what chooses among the instance types that qualify.
+        """
+        instance_info = {
+            "vcpu": 8,
+            "mem_gb": 32,
+            "local_ssd_gb": 0,
+            "architecture": "X86_64",
+            "supports_spot": True,
+        }
+        constraints = {"cpus_per_task": 3, "max_tasks_per_instance": 2}
+
+        assert instance_manager._instance_matches_constraints(instance_info, constraints)
+        assert instance_manager.tasks_per_instance(instance_info, constraints) == 2
+
+    def test_an_instance_that_would_run_too_many_tasks_is_still_rejected(
+        self, instance_manager: InstanceManager
+    ):
+        """The limit still does its job: 4 tasks fit where only 2 are allowed."""
+        instance_info = {
+            "vcpu": 12,
+            "mem_gb": 48,
+            "local_ssd_gb": 0,
+            "architecture": "X86_64",
+            "supports_spot": True,
+        }
+        constraints = {"cpus_per_task": 3, "max_tasks_per_instance": 2}
+
+        assert not instance_manager._instance_matches_constraints(instance_info, constraints)
+
+    def test_the_minimum_is_counted_in_tasks_too(self, instance_manager: InstanceManager):
+        """An instance has to be able to run the minimum, and 2 tasks is not 3."""
+        instance_info = {
+            "vcpu": 8,
+            "mem_gb": 32,
+            "local_ssd_gb": 0,
+            "architecture": "X86_64",
+            "supports_spot": True,
+        }
+
+        assert instance_manager._instance_matches_constraints(
+            instance_info, {"cpus_per_task": 3, "min_tasks_per_instance": 2}
+        )
+        assert not instance_manager._instance_matches_constraints(
+            instance_info, {"cpus_per_task": 3, "min_tasks_per_instance": 3}
+        )
+
+    def test_the_report_names_tasks_rather_than_translating_to_vcpus(
+        self, instance_manager: InstanceManager
+    ):
+        """A user who set a task limit should read about tasks when nothing matches."""
+        instance_types = [
+            {
+                "name": "small",
+                "vcpu": 4,
+                "mem_gb": 16,
+                "local_ssd_gb": 0,
+                "architecture": "X86_64",
+                "supports_spot": True,
+            }
+        ]
+
+        lines = instance_manager.describe_unmet_constraints(
+            instance_types, {"cpus_per_task": 1, "min_tasks_per_instance": 16}
+        )
+
+        assert any("min_tasks_per_instance" in line for line in lines)
+        assert not any("vCPUs needed" in line for line in lines)
